@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EEE Research Assistant</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1343,6 +1345,18 @@ nav {
 <div id="toast"></div>
 
 <script>
+// ===================== FIREBASE SETUP =====================
+const firebaseConfig = {
+  apiKey: "AIzaSyCr1xDwC8zxR9NyDcpZUZ3o2R8GRcrICh8",
+  authDomain: "research-c00b0.firebaseapp.com",
+  databaseURL: "https://research-c00b0-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "research-c00b0",
+  storageBucket: "research-c00b0.firebasestorage.app",
+  messagingSenderId: "371856786130",
+  appId: "1:371856786130:web:6d1b3ba0796bed4545630b"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 // ===================== STATE =====================
 const ADMIN_PASSES = ['092418', 'Kabbo020', 'Raisa089'];
 let isAdmin = false;
@@ -1362,42 +1376,92 @@ let data = {
 };
 
 function loadData() {
-  try {
-    const stored = localStorage.getItem('eeeResearchData');
-    if (stored) data = { ...data, ...JSON.parse(stored) };
-  } catch(e) {}
-  // Seed demo data if empty
-  if (!data.topics.length) {
-    data.topics = [
-      { id: uid(), name: 'Power Electronics', icon: '⚡', subfiles: [] },
-      { id: uid(), name: 'Digital Signal Processing', icon: '📡', subfiles: [] },
-      { id: uid(), name: 'Control Systems', icon: '🎛️', subfiles: [] },
-      { id: uid(), name: 'Microelectronics', icon: '🔬', subfiles: [] },
-    ];
-  }
-  if (!data.sites.length) {
-    data.sites = [
-      { id: uid(), name: 'IEEE Xplore', url: 'https://ieeexplore.ieee.org', desc: 'Largest database for electrical engineering and electronics research papers and standards.' },
-      { id: uid(), name: 'Google Scholar', url: 'https://scholar.google.com', desc: 'Freely accessible web search engine for scholarly literature across disciplines.' },
-      { id: uid(), name: 'SciHub', url: 'https://sci-hub.se', desc: 'Access to millions of research papers and books free of charge.' },
-      { id: uid(), name: 'ResearchGate', url: 'https://www.researchgate.net', desc: 'Professional network for scientists and researchers to share and find papers.' },
-    ];
-  }
-  if (!data.refCats.length) {
-    data.refCats = [
-      { id: uid(), name: 'Power Systems' },
-      { id: uid(), name: 'Signal Processing' },
-      { id: uid(), name: 'Machine Learning' },
-    ];
-  }
+  db.ref('eeeData').on('value', (snapshot) => {
+    const val = snapshot.val();
+    if (val) {
+
+      // Array বা Object দুটোই handle করার helper
+      function toArr(x) {
+        if (!x) return [];
+        if (Array.isArray(x)) return x.filter(Boolean);
+        return Object.values(x).filter(Boolean);
+      }
+
+      const topics = toArr(val.topics).map(t => ({
+        ...t,
+        subfiles: toArr(t.subfiles).map(sf => ({
+          ...sf,
+          pdfs: toArr(sf.pdfs)
+        }))
+      }));
+
+      data = {
+        topics,
+        sites:     toArr(val.sites),
+        refCats:   toArr(val.refCats),
+        refPapers: toArr(val.refPapers),
+        works:     toArr(val.works),
+        completed: toArr(val.completed)
+      };
+
+    } else {
+      seedInitialData();
+    }
+    renderAll();
+    updateStats();
+  });
+}
+
+function seedInitialData() {
+  data.topics = [
+    { id: uid(), name: 'Power Electronics', icon: '⚡', subfiles: [] },
+    { id: uid(), name: 'Digital Signal Processing', icon: '📡', subfiles: [] },
+    { id: uid(), name: 'Control Systems', icon: '🎛️', subfiles: [] },
+    { id: uid(), name: 'Microelectronics', icon: '🔬', subfiles: [] },
+  ];
+  data.sites = [
+    { id: uid(), name: 'IEEE Xplore', url: 'https://ieeexplore.ieee.org', desc: 'Largest database for EEE research papers.' },
+    { id: uid(), name: 'Google Scholar', url: 'https://scholar.google.com', desc: 'Freely accessible scholarly literature search.' },
+    { id: uid(), name: 'SciHub', url: 'https://sci-hub.se', desc: 'Access to millions of research papers free.' },
+    { id: uid(), name: 'ResearchGate', url: 'https://www.researchgate.net', desc: 'Professional network for researchers.' },
+  ];
+  data.refCats = [];
+  data.refPapers = [];
+  data.works = [];
+  data.completed = [];
   saveData();
 }
 
 function saveData() {
-  localStorage.setItem('eeeResearchData', JSON.stringify(data));
-  updateStats();
-}
+  // Array format structural compatibility check kore data object toiri
+  const saveObj = {
+    topics: (data.topics || []).map(t => ({
+      id: t.id,
+      name: t.name,
+      icon: t.icon || '⚡',
+      subfiles: (t.subfiles || []).map(sf => ({
+        id: sf.id,
+        name: sf.name,
+        pdfs: sf.pdfs || []
+      }))
+    })),
+    sites: data.sites || [],
+    refCats: data.refCats || [],
+    refPapers: data.refPapers || [],
+    works: data.works || [],
+    completed: data.completed || []
+  };
 
+  // EI CRITICAL LINE TI DATA FIREBASE CLOUD-E SENT KORBE
+  db.ref('eeeData').set(saveObj)
+    .then(() => {
+      console.log("Cloud Database synchronized successfully!");
+    })
+    .catch((error) => {
+      console.error("Firebase sync error: ", error);
+      toast("Sync failed with Database!", true);
+    });
+}
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -2103,9 +2167,6 @@ function toast(msg, isError = false) {
 
 // ===================== INIT =====================
 loadData();
-renderHome();
-renderTopics();
-renderRunning();
 
 // Admin add buttons visibility
 document.getElementById('adminRefAdd').style.display = 'none';
