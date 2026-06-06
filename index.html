@@ -24,6 +24,44 @@
   --glow: 0 0 20px rgba(0,212,255,0.3);
   --glow2: 0 0 40px rgba(0,212,255,0.15);
 }
+.hamburger {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  z-index: 1001;
+}
+.hamburger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--primary);
+  transition: all 0.3s;
+}
+.hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.hamburger.open span:nth-child(2) { opacity: 0; }
+.hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+@media(max-width: 700px) {
+  .hamburger { display: flex; }
+  .nav-links {
+    display: none;
+    position: fixed;
+    top: 60px; left: 0; right: 0;
+    background: rgba(2,10,18,0.98);
+    border-bottom: 1px solid rgba(0,212,255,0.15);
+    flex-direction: column;
+    padding: 1rem;
+    gap: 0.4rem;
+    z-index: 999;
+    backdrop-filter: blur(20px);
+  }
+  .nav-links.open { display: flex; }
+  .nav-btn { width: 100%; text-align: left; padding: 0.6rem 1rem; }
+}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -938,14 +976,17 @@ nav {
 <!-- NAVBAR -->
 <nav>
   <div class="nav-logo">⚡ EEE-RA</div>
-  <div class="nav-links">
-    <button class="nav-btn active" onclick="showPage('home')">Home</button>
-    <button class="nav-btn" onclick="showPage('running')">Running Works</button>
-    <button class="nav-btn" onclick="showPage('topics')">Topics</button>
-    <button class="nav-btn" onclick="showPage('ref')">Ref Papers</button>
-    <button class="nav-btn" onclick="showPage('sites')">Helping Sites</button>
-    <button class="nav-btn" onclick="showPage('completed')">Completed</button>
-    <button class="nav-btn admin-nav-btn" id="adminNavBtn" onclick="handleAdminNav()">Admin</button>
+  <button class="hamburger" id="hamburgerBtn" onclick="toggleMenu()" aria-label="Toggle menu">
+    <span></span><span></span><span></span>
+  </button>
+  <div class="nav-links" id="navLinks">
+    <button class="nav-btn active" onclick="showPage('home'); closeMenu()">Home</button>
+    <button class="nav-btn" onclick="showPage('running'); closeMenu()">Running Works</button>
+    <button class="nav-btn" onclick="showPage('topics'); closeMenu()">Topics</button>
+    <button class="nav-btn" onclick="showPage('ref'); closeMenu()">Ref Papers</button>
+    <button class="nav-btn" onclick="showPage('sites'); closeMenu()">Helping Sites</button>
+    <button class="nav-btn" onclick="showPage('completed'); closeMenu()">Completed</button>
+    <button class="nav-btn admin-nav-btn" id="adminNavBtn" onclick="handleAdminNav(); closeMenu()">Admin</button>
   </div>
 </nav>
 
@@ -1467,18 +1508,13 @@ function uid() {
 }
 
 // ===================== NAVIGATION =====================
-function showPage(id) {
+function showPage(id, pushState = true) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 
-  const navMap = { home:'home', running:'running', topics:'topics', ref:'ref', sites:'sites', completed:'completed' };
-  const navBtns = document.querySelectorAll('.nav-btn');
-  navBtns.forEach(b => {
-    if (b.textContent.toLowerCase().includes(id.toLowerCase().replace('topics','topic').replace('running','running'))) {
-      // not perfect but ok
-    }
-  });
+  if (pushState) {
+    history.pushState({ page: id, topicId: currentTopicId, subfileId: currentSubfileId }, '', '#' + id);
+  }
 
   if (id === 'home') renderHome();
   if (id === 'running') renderRunning();
@@ -1486,6 +1522,8 @@ function showPage(id) {
   if (id === 'ref') renderRef();
   if (id === 'sites') renderSites();
   if (id === 'completed') renderCompleted();
+  if (id === 'topicDetail') renderTopicDetail();
+  if (id === 'subfileDetail') renderSubfileDetail();
 
   updateStats();
 }
@@ -1584,9 +1622,10 @@ function openTopicDetail(topicId) {
   document.getElementById('tdBreadcrumb').textContent = t.name;
   document.getElementById('tdTitle').innerHTML = t.name.split(' ').map((w,i) => i===0 ? w : `<span>${w}</span>`).join(' ');
   document.getElementById('tdAdminBtns').style.display = isAdmin ? 'flex' : 'none';
-
   renderTopicDetail();
-  showPage('topicDetail');
+  history.pushState({ page: 'topicDetail', topicId: topicId, subfileId: null }, '', '#topicDetail');
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('topicDetail').classList.add('active');
 }
 
 function renderTopicDetail() {
@@ -1741,14 +1780,14 @@ function openSubfileDetail(sfId) {
   const t = data.topics.find(x => x.id === currentTopicId);
   const sf = (t?.subfiles || []).find(x => x.id === sfId);
   if (!sf) return;
-
   document.getElementById('sfBreadTopic').textContent = t.name;
   document.getElementById('sfBreadSub').textContent = sf.name;
   document.getElementById('sfTitle').innerHTML = sf.name;
   document.getElementById('sfAdminBtns').style.display = isAdmin ? 'flex' : 'none';
-
   renderSubfileDetail();
-  showPage('subfileDetail');
+  history.pushState({ page: 'subfileDetail', topicId: currentTopicId, subfileId: sfId }, '', '#subfileDetail');
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('subfileDetail').classList.add('active');
 }
 
 function renderSubfileDetail() {
@@ -2167,11 +2206,49 @@ function toast(msg, isError = false) {
 
 // ===================== INIT =====================
 loadData();
+history.replaceState({ page: 'home', topicId: null, subfileId: null }, '', '#home');
 
 // Admin add buttons visibility
 document.getElementById('adminRefAdd').style.display = 'none';
 document.getElementById('adminSiteAdd').style.display = 'none';
 document.getElementById('adminRunningAdd').style.display = 'none';
+
+// Back button history
+window.addEventListener('popstate', (e) => {
+  const state = e.state;
+  if (!state) { showPage('home', false); return; }
+  if (state.topicId) currentTopicId = state.topicId;
+  if (state.subfileId) currentSubfileId = state.subfileId;
+  if (state.page === 'topicDetail' && state.topicId) {
+    const t = data.topics.find(x => x.id === state.topicId);
+    if (t) {
+      document.getElementById('tdBreadcrumb').textContent = t.name;
+      document.getElementById('tdTitle').innerHTML = t.name.split(' ').map((w,i) => i===0 ? w : `<span>${w}</span>`).join(' ');
+    }
+  }
+  if (state.page === 'subfileDetail' && state.subfileId) {
+    const t = data.topics.find(x => x.id === state.topicId);
+    const sf = (t?.subfiles || []).find(x => x.id === state.subfileId);
+    if (sf) {
+      document.getElementById('sfBreadTopic').textContent = t.name;
+      document.getElementById('sfBreadSub').textContent = sf.name;
+      document.getElementById('sfTitle').innerHTML = sf.name;
+    }
+  }
+  showPage(state.page, false);
+});
+
+// Hamburger menu
+function toggleMenu() {
+  const btn = document.getElementById('hamburgerBtn');
+  const links = document.getElementById('navLinks');
+  btn.classList.toggle('open');
+  links.classList.toggle('open');
+}
+function closeMenu() {
+  document.getElementById('hamburgerBtn').classList.remove('open');
+  document.getElementById('navLinks').classList.remove('open');
+}
 </script>
 </body>
 </html>
